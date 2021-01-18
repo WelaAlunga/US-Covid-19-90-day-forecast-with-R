@@ -1,0 +1,137 @@
+---
+title: "Covid 19 Confirmed Cases 90 Day Forecast"
+author: "Welamaza M"
+date: "1/18/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+In this project we use a model to predict how covid confirmed cases will look for next 3 months in the US. According to the Centers for Disease Control and Prevention (CDC) , a confirmed case "is an individual who had a confirmatory viral test performed by was of throat swab, nose swab or saliva and that specimen tested positive for SARS-CoV-2, which is the virus that casues COVID-19". We explore different R packages including: covid19.analytics, dplyr, prophet, lubridate, ggplot and more packages to forcast how the curve will look.
+
+
+***Dataset:*** We will be working at live data from reported covid19 cases specifically the confirmed cases, the data is collected by John Hopkins University. The dataset can be found in the "covid19.analytics" package
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load required R packages:
+```{r Packages, message=FALSE, warning=FALSE}
+
+library(covid19.analytics)
+library(dplyr)
+library(prophet)
+library(lubridate)
+library(ggplot2)
+library(sna)
+library(openair)
+library(kableExtra)
+```
+Read data
+```{r Data, echo=TRUE, message=FALSE, warning=FALSE}
+tsc <- covid19.data(case = 'ts-confirmed')
+
+dl <- tail(tsc[,1:10])
+
+```
+```{r}
+kable(dl)%>%
+  kable_styling(bootstrap_options = "striped", font_size = 15)
+```
+
+Filter for the US Data
+
+```{r}
+tsc <- tsc %>% filter(Country.Region == 'US')
+```
+
+Transpose, bind columns, rename headers and remove first 4 rows - they do no conatin useful data
+```{r Read data, message=FALSE, warning=FALSE}
+
+
+tsc <- data.frame(t(tsc)) # to transpose the data 
+tsc <- cbind(rownames(tsc), data.frame(tsc, row.names = NULL))
+colnames(tsc) <- c('Date', 'Confirmed')
+tsc <- tsc[-c(1:4),] # remove first 4 rows
+
+dh <- head(tsc)
+kable(dh)%>%
+  kable_styling(bootstrap_options = "striped", font_size = 15)
+
+```
+
+In order to convert a factor to numeric, convert to character first
+```{r}
+tsc$Confirmed <- as.numeric(as.character(tsc$Confirmed))
+tsc$Date <- ymd(tsc$Date) #ensure date is in correct format
+str(tsc) 
+
+```
+Plot line graph showing confirmed cases, the y-axis are cumulative
+```{r}
+qplot(Date, Confirmed, data = tsc,
+      main = 'Covid-19 confirmed case in US')
+
+```
+
+
+
+
+Prepare for forecasting: store dates in ds, cases confirmed in y and make date frame with  both
+
+```{r}
+ds <- tsc$Date
+y <- tsc$Confirmed
+df <- data.frame(ds, y)
+```
+
+Use function prophet to forecast and make a new data frame that spans 3 months into the future. Make new variable with predictions and plot.The shaded blue around the line shows the confidence interval, if nothing changes confirmed cases should lie in between the interval. With vaccine in action we should expect to see the curve flatten steadily.
+```{r Forcast, message=FALSE, warning=FALSE}
+
+# Forcasting 
+m <- prophet(df, yearly.seasonality = TRUE)
+
+# Prediction
+future <- make_future_dataframe(m, periods = 90) #for future dates 
+
+forecast <- predict(m, future)
+
+plot(m, forecast,
+     xlab = "Date",
+     ylab =  'Confirmed Cases')
+```
+
+
+For interactive plot. Predictions show we can reach as high as 4 million cases in April.
+```{r Interactive plot, echo=TRUE, message=FALSE, warning=FALSE}
+
+dyplot.prophet(m, forecast) 
+
+```
+
+
+
+Graphs below show trends of average confirmed case yearly, weekly and daily
+```{r}
+prophet_plot_components(m, forecast)
+
+```
+ 
+Next evaluate the accuracy of model. 
+```{r}
+pred <- forecast$yhat[1:362]
+actual <- m$history$y
+plot(actual,pred)
+model1 <- lm(pred ~ actual)
+
+abline(lm(model1),col= 'red')
+```
+
+R is squared equal to 1 and p-value is very small thus we have high confidence that the model is statistically significant. 
+```{r}
+
+summary(model1)
+
+```
+
